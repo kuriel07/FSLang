@@ -21,7 +21,7 @@ C-libraries and Token definitions
         	}\
 	} \
 	if ( c == EOF ) {\
-		printf( "input in flex scanner failed\n" ); \
+		printf( "\n" ); \
 	}\
 	result = n; \
 	if(result<=0) result=YY_NULL; \
@@ -32,6 +32,10 @@ C-libraries and Token definitions
 /*=========================================================================
 TOKEN Definitions
 =========================================================================*/
+
+%x BLOCK_COMMENT_SECTION
+%x LINE_COMMENT_SECTION
+LETTER ([ !#-ÿ]|\\.|[^\\"])*
 ALPHANUMERIC [A-Za-z0-9]*
 NUMERIC [0-9]*
 
@@ -39,6 +43,21 @@ NUMERIC [0-9]*
 REGULAR EXPRESSIONS defining the tokens for the Simple language
 =========================================================================*/
 %%
+<BLOCK_COMMENT_SECTION>{
+     "*/"      { BEGIN(INITIAL); }
+     [^*\n]+   { /* eat comment in chunks */ }
+     "*"       { /* eat the lone star */ }
+     \n        {  }
+}
+
+<LINE_COMMENT_SECTION>{
+     \n      { BEGIN(INITIAL); }
+     [^*\n]+   // eat comment in chunks
+     "*"       // eat the lone star
+}
+
+"/*"        { BEGIN(BLOCK_COMMENT_SECTION); }
+\/\/		{ BEGIN(LINE_COMMENT_SECTION); }
 [ \r\t]+ {  }
 [\n]+ { }
 
@@ -52,8 +71,17 @@ REGULAR EXPRESSIONS defining the tokens for the Simple language
 "=" { return P_ASSIGNMENT; }
 ";" { return P_EOS; }
 
+\"{LETTER}\" {
+	snprintf(yylval.string, 4096, "%s", yytext + 1);
+	yylval.string[strlen(yytext + 1) - 1] = 0;
+	return P_STRING;
+}
+
 {NUMERIC} { yylval.value = atoi(yytext); return P_CONST; }
-{ALPHANUMERIC} { strncpy(yylval.string, yytext, 4096); return P_VAR; }
+{ALPHANUMERIC} {
+	strncpy(yylval.string, yytext, 4096);
+	return P_VAR;
+}
 
 
 . { return( yytext[0] ); }

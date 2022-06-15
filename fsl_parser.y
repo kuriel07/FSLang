@@ -4,23 +4,50 @@
 int errors = 0;
 int yyerror ( char *s );
 
+#define VM_NODE_TYPE_STRING		'S'
+#define VM_NODE_TYPE_INTEGER	'I'
+
 typedef struct vm_var vm_var;
+typedef struct vm_immutable vm_immutable;
+typedef struct vm_node vm_node ;
 
 struct vm_var {
 	char name[32];
-	int value;
+	vm_node * value;
 	vm_var * next;
 };
 
-vm_var * _vars = NULL;
+struct vm_immutable {
+	int length;
+	int refcount;
+	vm_var * next;
+	char value[0];
+};
+
+struct vm_node {
+	int type;
+	char * ptr;
+};
+
+const vm_node VM_NULL = { VM_NODE_TYPE_INTEGER, 0 };
+
+vm_var * _vars = NULL;			//variable storage
 vm_var * _current_var = NULL;
-int _stacks[100];
+vm_immutable * _immutable = NULL;			//immutable storage
+vm_immutable * _current_const = NULL;
+vm_node * _stacks[100];
 int _stack_index = 0;
 
-void push(int val) { _stacks[_stack_index++] = val; }
-int pop(void) { return _stacks[--_stack_index];  }
+void push(vm_node * val) { _stacks[_stack_index++] = val; }
+vm_node * pop(void) {
+	vm_node * node = _stacks[--_stack_index];
+	if(node != NULL) {
+		//if(node->type ==  VM_NODE_TYPE_STRING)
+		//	((vm_immutable *)node->ptr)->refcount--;		//ref down
+	}
+}
 
-vm_var * create_variable(char * name, int value) {
+vm_var * create_variable(char * name, vm_node * value) {
 	vm_var * var = malloc(sizeof(vm_var));
 	strncpy(var->name, name, 32);
 	var->value = value;
@@ -49,6 +76,137 @@ vm_var * select_variable(char * name) {
 			iterator = iterator->next;
 		}
 	return NULL;
+}
+
+vm_immutable * create_constant(int length, char * value) {
+	vm_immutable * immutable = malloc(sizeof(vm_immutable) + length);
+	immutable->length = length;
+	if(value != NULL) strncpy(immutable->value, value, length);
+	immutable->refcount = 0;
+	immutable->next = NULL;
+	return immutable;
+}
+
+vm_immutable * add_constant(vm_immutable * var) {
+	vm_immutable * iterator = _immutable;
+	if(iterator == NULL) _immutable = var;
+	else {
+		while(iterator->next != NULL) {
+			iterator = iterator->next;
+		}
+		iterator->next = var;
+	}
+	return var;
+}
+
+vm_immutable * select_constant(char * value) {
+	vm_immutable * iterator = _immutable;
+		while(iterator!= NULL) {
+			if(strcmp(iterator->value , value) == 0) {
+				return iterator;
+			}
+			iterator = iterator->next;
+		}
+	return NULL;
+}
+
+vm_node * create_node(int type, char * ptr) {
+	vm_node * node = malloc(sizeof(vm_node));
+	node->ptr = ptr;
+	node->type= type;
+	return node;
+}
+
+void delete_node(vm_node * node) {
+	free(node);
+}
+
+void print_node(vm_node * node) {
+	vm_immutable * immut;
+		int intval;
+	if(node == NULL) return;
+	switch(node->type) {
+		case VM_NODE_TYPE_STRING:
+			immut = (vm_immutable *)node->ptr;
+			printf("%s\n", immut->value);
+			break;
+		case VM_NODE_TYPE_INTEGER:
+			intval = (int)node->ptr;
+			printf("%d\n", intval);
+			break;
+	}
+}
+
+vm_node * add_operation(vm_node * op1, vm_node * op2) {
+	char num_buffer1[50];
+	char num_buffer2[50];
+	char * ptr1;
+	char * ptr2;
+	if(op1 == NULL) return &VM_NULL;
+	if(op2 == NULL) return &VM_NULL;
+
+	//create string value if necessary for operation
+	if(op1->type == VM_NODE_TYPE_STRING) { ptr1 = ((vm_immutable *)op1->ptr)->value; }
+	else { ptr1 = num_buffer1; snprintf(num_buffer1, 50, "%d", (int)op1->ptr); }
+	if(op2->type == VM_NODE_TYPE_STRING) { ptr2= ((vm_immutable *)op2->ptr)->value; }
+	else { ptr2 = num_buffer2; snprintf(num_buffer2, 50, "%d", (int)op2->ptr); }
+
+	if(op1->type == VM_NODE_TYPE_STRING || op2->type == VM_NODE_TYPE_STRING) {
+		//perform string concatenation
+		vm_immutable * immut = create_constant(strlen(ptr1) + strlen(ptr2) + 1, NULL);
+		snprintf(immut->value, strlen(ptr1) + strlen(ptr2)+ 1, "%s%s", ptr1, ptr2);
+		return create_node(VM_NODE_TYPE_STRING, immut);
+	}
+	return create_node(VM_NODE_TYPE_INTEGER, (int)op1->ptr + (int)op2->ptr);
+}
+vm_node * sub_operation(vm_node * op1, vm_node * op2) {
+	if(op1 == NULL) return &VM_NULL;
+	if(op2 == NULL) return &VM_NULL;
+
+	if(op1->type == VM_NODE_TYPE_STRING || op2->type == VM_NODE_TYPE_STRING) {
+		//perform string concatenation
+		printf("error : unable to perform substraction\n");
+		return &VM_NULL;
+	}
+	return create_node(VM_NODE_TYPE_INTEGER, (int)op1->ptr - (int)op2->ptr);
+}
+vm_node * mul_operation(vm_node * op1, vm_node * op2) {
+	if(op1 == NULL) return &VM_NULL;
+	if(op2 == NULL) return &VM_NULL;
+
+	if(op1->type == VM_NODE_TYPE_STRING || op2->type == VM_NODE_TYPE_STRING) {
+		//perform string concatenation
+		printf("error : unable to perform multiplication\n");
+		return &VM_NULL;
+	}
+	return create_node(VM_NODE_TYPE_INTEGER, (int)op1->ptr * (int)op2->ptr);
+}
+vm_node * div_operation(vm_node * op1, vm_node * op2) {
+	if(op1 == NULL) return &VM_NULL;
+	if(op2 == NULL) return &VM_NULL;
+
+	if(op1->type == VM_NODE_TYPE_STRING || op2->type == VM_NODE_TYPE_STRING) {
+		//perform string concatenation
+		printf("error : unable to perform division\n");
+		return &VM_NULL;
+	}
+	if(op2->ptr == 0) {
+		printf("error : division by zero\n");
+		return &VM_NULL;
+	}
+	return create_node(VM_NODE_TYPE_INTEGER, (int)op1->ptr / (int)op2->ptr);
+}
+
+int is_digit(char * tmp) {
+	int isDigit = 1;
+	int j=0;
+	while(j<strlen(tmp) && isDigit == 1){
+		if(tmp[j] == '\n') break;
+  	if(tmp[j] > 57 || tmp[j] < 48)
+    	isDigit = 0;
+  	j++;
+	}
+	return isDigit;
 }
 
 
@@ -93,11 +251,12 @@ TOKENS
 
 %token  P_ASSIGNMENT		520
 %token  P_EOS					521
+%token P_STRING			523
 
 %type<string> P_VAR;		//string
 %type<value> P_CONST;			//int
 %type<value> P_INPUT;			//int
-
+%type<string> P_STRING;
 /*=========================================================================
 GRAMMAR RULES for the Simple language
 =========================================================================*/
@@ -112,21 +271,42 @@ stmt: P_VAR P_ASSIGNMENT
 				if(var == NULL) _current_var = add_variable(create_variable($1, 0));
 				else _current_var = var;
 		 }
-			expr P_EOS { _current_var->value = pop(); }
-| P_OUTPUT P_ASSIGNMENT expr P_EOS { printf("output : %d\n", pop()); }
+			expr P_EOS { vm_node * node = pop();
+				_current_var->value = node;
+			}
+| P_OUTPUT P_ASSIGNMENT expr P_EOS { print_node(pop()); }
 ;
-expr: expr P_ADD expr { int x=pop(); int y=pop(); push(y+x);  }
-| expr P_MUL expr { int x=pop(); int y=pop(); push(y*x); }
-| expr P_SUB expr { int x=pop(); int y=pop(); push(y-x); }
-| expr P_DIV expr { int x=pop(); int y=pop(); push(y/x); }
-| P_INPUT  { int a; printf("input number : "); scanf("%d", &a); push(a); }
+expr: expr P_ADD expr { vm_node * x=pop(); vm_node * y=pop(); push(add_operation(y, x));  }
+| expr P_MUL expr { vm_node * x=pop(); vm_node * y=pop(); push(mul_operation(y, x)); }
+| expr P_SUB expr { vm_node * x=pop(); vm_node * y=pop(); push(sub_operation(y, x)); }
+| expr P_DIV expr { vm_node * x=pop(); vm_node * y=pop(); push(div_operation(y, x)); }
+| P_INPUT  {
+	 	char num_buffer[128];
+			//printf("input : ");
+			for(int i=0;i<128;i++) {
+				num_buffer[i] = getchar();
+				if(num_buffer[i] =='\n') { num_buffer[i] = 0; break; }
+			}
+			if(is_digit(num_buffer)) {
+					int a = atoi(num_buffer);
+					push(create_node(VM_NODE_TYPE_INTEGER, a));
+			} else {
+					vm_immutable * immut = select_constant(num_buffer);
+					if(immut == NULL) immut = add_constant(create_constant(strlen(num_buffer)+1, num_buffer));
+					push(create_node(VM_NODE_TYPE_STRING, immut ));
+			}
+	}
 | P_VAR { vm_var * var = select_variable($1);
-			if(var == NULL) push(0);
+			if(var == NULL) push(create_node(VM_NODE_TYPE_INTEGER, 0));
 			else {
 				push(var->value);
 			}
 		}
-| P_CONST { push($1); }
+| P_CONST { push(create_node(VM_NODE_TYPE_INTEGER, $1));  }
+| P_STRING { vm_immutable * immut = select_constant($1);
+		if(immut == NULL) immut = add_constant(create_constant(strlen($1) + 1, $1));
+		push(create_node(VM_NODE_TYPE_STRING, immut ));
+	 }
 ;
 %%
 

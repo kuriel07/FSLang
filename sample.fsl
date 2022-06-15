@@ -1,8 +1,8 @@
 
 
-a = input;
-b = input;
-c = input;
+/*a = input;*/
+//b = input;
+//c = input;
 
-
-output = input + c;
+output = "your name please?";
+output = "your name is " + input;
