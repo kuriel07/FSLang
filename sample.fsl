@@ -1,0 +1,8 @@
+
+
+a = input;
+b = input;
+c = input;
+
+
+output = input + c;
